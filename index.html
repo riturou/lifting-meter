@@ -299,7 +299,7 @@ canvas#mainChart{width:100%;height:100%;}
       <div class="ob-label">🔑 家族合言葉（任意）</div>
       <input type="text" class="ob-input" id="obCode" placeholder="例：ritsuki2018　※設定しなくてもOK" autocomplete="off" autocapitalize="none">
       <div style="font-size:.68rem;color:var(--muted);margin-top:6px;line-height:1.7;text-align:left;">
-        家族で記録を共有したい場合のみ入力してください。<br>同じ合言葉を入力した端末でデータが共有されます。後から設定画面で設定できます。
+        家族で記録を共有したい場合のメモ用です（現在は端末間の自動共有には対応していません）。後から設定画面で設定できます。
       </div>
     </div>
     <button class="ob-btn" onclick="startApp()">⚽ はじめる！</button>
@@ -527,16 +527,15 @@ canvas#mainChart{width:100%;height:100%;}
 <div class="overlay" id="editCodeModal" onclick="closeMod(event,'editCodeModal')">
   <div class="modal-sheet">
     <div class="modal-handle"></div>
-    <div class="modal-title">🔑 家族合言葉を変更</div>
+    <div class="modal-title">🔑 家族合言葉を設定</div>
     <div style="font-size:.72rem;color:var(--muted);margin-bottom:14px;line-height:1.7;">
-      同じ合言葉を入力した端末でデータが共有されます。<br>
-      ⚠️ 変更すると現在の端末のデータは引き継がれません。
+      ※現在のバージョンでは合言葉はメモとして保存されるのみで、他の端末とのデータ共有はまだできません（今後対応予定です）。
     </div>
     <div class="modal-field">
-      <div class="modal-label">新しい合言葉</div>
+      <div class="modal-label">合言葉</div>
       <input type="text" class="modal-input" id="editCodeInput" autocomplete="off" autocapitalize="none">
     </div>
-    <button class="modal-save" onclick="saveEditCode()">保存して切り替え</button>
+    <button class="modal-save" onclick="saveEditCode()">保存</button>
   </div>
 </div>
 
@@ -565,16 +564,13 @@ const DEFAULT_TYPES = [
 // 本番運用：サンプルデータなし（0からスタート）
 const SAMPLE_RECORDS = [];
 
-// 合言葉ベースのストレージ
-function getStorageKey() {
-  const code = localStorage.getItem('lm_family_code') || 'default';
-  return 'lm_state_' + code;
-}
+// 端末固有の固定キーで保存（合言葉の有無に関わらずデータがブレないようにする）
+const STORAGE_KEY = 'lm_state_main';
 function loadState() {
-  try { return JSON.parse(localStorage.getItem(getStorageKey()) || 'null'); } catch(e) { return null; }
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch(e) { return null; }
 }
 function saveState() {
-  localStorage.setItem(getStorageKey(), JSON.stringify(state));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
 let state = loadState() || {
@@ -621,8 +617,8 @@ function calcStreak() {
    INIT / ONBOARD
 ════════════════════════════════ */
 window.onload = () => {
-  const savedCode = localStorage.getItem('lm_family_code');
-  if (savedCode && state.userName) {
+  // 名前が保存されていれば登録済みとみなす（家族合言葉は任意のため判定に使わない）
+  if (state.userName) {
     document.getElementById('screenOnboard').style.display = 'none';
     initMainApp();
   } else {
@@ -1131,18 +1127,9 @@ function saveEditCode() {
   const code = document.getElementById('editCodeInput').value.trim().toLowerCase();
   if (!code) { showToast('合言葉を入力してください'); return; }
   localStorage.setItem('lm_family_code', code);
-  // 新しいキーでデータを読み込む（あれば既存データ、なければ現在のデータを移行）
-  const existing = loadState();
-  if (!existing) {
-    // 新しい合言葉に現在のデータをコピー
-    saveState();
-  } else {
-    state = existing;
-    state.userName = localStorage.getItem('lm_family_code') ? state.userName : state.userName;
-  }
   document.getElementById('editCodeModal').classList.remove('open');
-  buildSettings(); renderHome(); rebuildInpSelect(); buildLogFilters(); buildGraphTypeSel();
-  showToast('合言葉を「' + code + '」に変更しました！');
+  buildSettings();
+  showToast('合言葉を「' + code + '」に設定しました！');
 }
 
 function deleteCustomType(id) {
@@ -1153,7 +1140,8 @@ function deleteCustomType(id) {
 }
 function resetAll() {
   if (!confirm('全データをリセットしますか？\nこの操作は取り消せません。')) return;
-  localStorage.removeItem('lm_state');
+  localStorage.removeItem('lm_state_main');
+  localStorage.removeItem('lm_family_code');
   location.reload();
 }
 
