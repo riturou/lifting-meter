@@ -1,8 +1,7 @@
 // リフティングメーター Service Worker
-const CACHE_NAME = 'lifting-meter-v1';
+// v2: ネットワーク優先方式に変更（更新が確実に反映されるように）
+const CACHE_NAME = 'lifting-meter-v2';
 const ASSETS = [
-  './',
-  './index.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
@@ -16,7 +15,14 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// 有効化時：古いキャッシュを削除
+// index.htmlから「今すぐ切り替えて」と言われたら即座に有効化
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// 有効化時：古いバージョンのキャッシュを全て削除
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
@@ -28,14 +34,16 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// リクエスト時：キャッシュ優先、なければネットワーク
+// リクエスト時：ネットワーク優先。取得できたら常に最新を使い、キャッシュも更新する。
+// オフライン時のみキャッシュから返す。
 self.addEventListener('fetch', (event) => {
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request).catch(() => {
-        // オフラインかつキャッシュもない場合はindex.htmlを返す（SPA的挙動）
-        return caches.match('./index.html');
-      });
-    })
+    fetch(event.request)
+      .then((response) => {
+        const resClone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, resClone));
+        return response;
+      })
+      .catch(() => caches.match(event.request).then((cached) => cached || caches.match('./index.html')))
   );
 });
