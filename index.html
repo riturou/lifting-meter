@@ -696,7 +696,16 @@ function navTo(id, typeId) {
   }
   if (id === 'screenHome') renderHome();
   if (id === 'screenLog')  renderLogFull(currentLogFilter);
-  if (id === 'screenSettings') buildSettings();
+  if (id === 'screenSettings') {
+    buildSettings();
+    // 並び替えボタンから来た場合、オリジナル種目セクションへスクロール
+    if (state.customTypes.length) {
+      setTimeout(() => {
+        const el = document.getElementById('origList');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    }
+  }
   // 記録ボタン固定バーの表示制御
   document.getElementById('inputSaveBar').style.display = id === 'screenInput' ? 'block' : 'none';
 
@@ -754,12 +763,22 @@ function renderHome() {
   if (state.customTypes.length) {
     const grpDiv = document.createElement('div');
     grpDiv.className = 'cat-group';
+    // ラベル行：「オリジナル」ラベル＋「並び替え」ボタンを横並び
+    const lblRow = document.createElement('div');
+    lblRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;';
     const lbl = document.createElement('div');
     lbl.className = 'cat-label';
-    lbl.style.background = 'rgba(255,214,0,.12)';
-    lbl.style.color = 'var(--accent)';
+    lbl.style.cssText = 'background:rgba(255,214,0,.12);color:var(--accent);margin-bottom:0;';
     lbl.textContent = 'オリジナル';
-    grpDiv.appendChild(lbl);
+    const sortBtn = document.createElement('button');
+    sortBtn.textContent = '⚙️ 並び替え';
+    sortBtn.style.cssText = 'font-size:.6rem;font-weight:700;color:var(--muted);background:none;border:1px solid #E5E7EB;border-radius:6px;padding:3px 8px;cursor:pointer;font-family:"Noto Sans JP",sans-serif;transition:all .15s;white-space:nowrap;';
+    sortBtn.onmouseenter = () => { sortBtn.style.color = 'var(--g2)'; sortBtn.style.borderColor = 'var(--g2)'; };
+    sortBtn.onmouseleave = () => { sortBtn.style.color = 'var(--muted)'; sortBtn.style.borderColor = '#E5E7EB'; };
+    sortBtn.onclick = (e) => { e.stopPropagation(); navTo('screenSettings'); showToast('⚙️ 設定タブで並び替えできます！'); };
+    lblRow.appendChild(lbl);
+    lblRow.appendChild(sortBtn);
+    grpDiv.appendChild(lblRow);
     const row = document.createElement('div');
     row.className = 'cards-row';
     state.customTypes.forEach(t => row.appendChild(makeRecCard(t, gb)));
@@ -771,8 +790,7 @@ function renderHome() {
     grpDiv.className = 'cat-group';
     const lbl = document.createElement('div');
     lbl.className = 'cat-label';
-    lbl.style.background = 'rgba(255,214,0,.12)';
-    lbl.style.color = 'var(--accent)';
+    lbl.style.cssText = 'background:rgba(255,214,0,.12);color:var(--accent);margin-bottom:8px;';
     lbl.textContent = 'オリジナル';
     grpDiv.appendChild(lbl);
     const row = document.createElement('div');
