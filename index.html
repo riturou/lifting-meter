@@ -217,8 +217,12 @@ canvas#mainChart{width:100%;height:100%;}
 
 /* originals list */
 .orig-list{background:#fff;border:1px solid var(--border);border-radius:var(--r2);overflow:hidden;margin-bottom:14px;box-shadow:var(--shadow);}
-.orig-row{display:flex;align-items:center;padding:12px 14px;border-bottom:1px solid #F3F4F6;gap:10px;}
+.orig-row{display:flex;align-items:center;padding:12px 14px;border-bottom:1px solid #F3F4F6;gap:10px;transition:background .15s;}
 .orig-row:last-child{border-bottom:none;}
+.orig-row.dragging{opacity:.4;background:#F0FDF4;}
+.orig-row.drag-over{background:#DCFCE7;border-top:2px solid var(--g2);}
+.orig-drag{color:#D1D5DB;font-size:1.1rem;cursor:grab;padding:2px 4px;flex-shrink:0;touch-action:none;}
+.orig-drag:active{cursor:grabbing;}
 .orig-name{flex:1;font-size:.82rem;font-weight:700;color:var(--text);}
 .orig-del{color:var(--red);font-size:.7rem;cursor:pointer;padding:4px;}
 
@@ -387,7 +391,7 @@ canvas#mainChart{width:100%;height:100%;}
     </div>
 
     <!-- ── INPUT ── -->
-    <div class="screen" id="screenInput">
+    <div class="screen" id="screenInput" style="padding-bottom:130px;">
       <div class="input-screen-inner" style="padding-top:4px;">
         <div class="inp-title">📝 記録を入力</div>
         <div class="inp-field">
@@ -406,9 +410,8 @@ canvas#mainChart{width:100%;height:100%;}
           <div class="inp-label">メモ（任意）</div>
           <input type="text" class="inp-input" id="inpMemo" placeholder="例：集中できた！右足が安定してきた">
         </div>
-        <button class="inp-save-btn" onclick="saveRecord()">💾 記録する！</button>
-        <div class="inp-note">記録すると自動で最高記録が更新されます</div>
-        <div style="height:16px;"></div>
+        <div class="inp-note" style="margin-bottom:10px;">記録すると自動で最高記録が更新されます</div>
+        <div style="height:8px;"></div>
         <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px;">
           <div class="inp-label">✨ オリジナル種目を追加</div>
           <div style="display:flex;gap:8px;margin-top:6px;">
@@ -473,6 +476,11 @@ canvas#mainChart{width:100%;height:100%;}
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- 記録ボタン固定エリア（キーボードに隠れない位置に常時表示） -->
+    <div id="inputSaveBar" style="display:none;position:relative;z-index:9;background:#fff;border-top:1px solid var(--border);padding:10px 14px;box-shadow:0 -2px 12px rgba(0,0,0,.06);">
+      <button class="inp-save-btn" onclick="saveRecord()" style="margin:0;">💾 記録する！</button>
     </div>
 
     <!-- BOTTOM NAV -->
@@ -689,8 +697,15 @@ function navTo(id, typeId) {
   if (id === 'screenHome') renderHome();
   if (id === 'screenLog')  renderLogFull(currentLogFilter);
   if (id === 'screenSettings') buildSettings();
+  // 記録ボタン固定バーの表示制御
+  document.getElementById('inputSaveBar').style.display = id === 'screenInput' ? 'block' : 'none';
+
   if (id === 'screenInput') {
     document.getElementById('inpDate').value = todayStr();
+    if (typeId) {
+      const sel = document.getElementById('inpType');
+      if (sel) sel.value = typeId;
+    }
   }
 }
 function goSettings() { navTo('screenSettings'); }
@@ -776,7 +791,8 @@ function makeRecCard(t, globalBestVal) {
   const isGlobalBest = best !== null && best === globalBestVal && globalBestVal > 0;
   const div = document.createElement('div');
   div.className = 'rec-card' + (isGlobalBest ? ' top-record' : '') + (best===null ? ' untried' : '');
-  div.onclick = () => navTo('screenGraph', t.id);
+  div.ondblclick = () => navTo('screenGraph', t.id);
+  div.onclick = () => navTo('screenInput', t.id);
   const pct = best !== null && globalBestVal > 0 ? Math.round((best/globalBestVal)*100) : 0;
   div.innerHTML = `
     ${isGlobalBest ? '<div class="badge-best">🏆</div>' : ''}
@@ -1084,14 +1100,69 @@ function buildSettings() {
     list.innerHTML = '<div style="padding:14px 16px;font-size:.75rem;color:var(--muted);">オリジナル種目はまだありません</div>';
     return;
   }
+  let dragSrcId = null;
+
   state.customTypes.forEach(t => {
     const row = document.createElement('div');
     row.className = 'orig-row';
+    row.dataset.id = t.id;
+    row.draggable = true;
     row.innerHTML = `
-      <div style="font-size:1rem">${t.icon||'⭐'}</div>
+      <div class="orig-drag">☰</div>
       <div class="orig-name">${t.name}</div>
       <div class="orig-del" onclick="deleteCustomType('${t.id}')">削除</div>
     `;
+
+    // PC drag
+    row.addEventListener('dragstart', () => { dragSrcId = t.id; row.classList.add('dragging'); });
+    row.addEventListener('dragend',   () => row.classList.remove('dragging'));
+    row.addEventListener('dragover',  (e) => { e.preventDefault(); row.classList.add('drag-over'); });
+    row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+    row.addEventListener('drop', (e) => {
+      e.preventDefault(); row.classList.remove('drag-over');
+      if (dragSrcId && dragSrcId !== t.id) {
+        const from = state.customTypes.findIndex(x => x.id === dragSrcId);
+        const to   = state.customTypes.findIndex(x => x.id === t.id);
+        const [moved] = state.customTypes.splice(from, 1);
+        state.customTypes.splice(to, 0, moved);
+        saveState(); buildSettings(); renderHome(); rebuildInpSelect();
+      }
+    });
+
+    // タッチ操作（スマホ）
+    let touchStartY = 0, touchItem = null;
+    row.addEventListener('touchstart', (e) => {
+      touchStartY = e.touches[0].clientY;
+      touchItem = row;
+      dragSrcId = t.id;
+    }, {passive:true});
+    row.addEventListener('touchmove', (e) => {
+      const dy = e.touches[0].clientY - touchStartY;
+      touchItem.style.transform = `translateY(${dy}px)`;
+      touchItem.style.zIndex = '10';
+      touchItem.style.opacity = '0.7';
+      // 重なり先を探す
+      const els = list.querySelectorAll('.orig-row:not([data-id="' + dragSrcId + '"])');
+      els.forEach(el => el.classList.remove('drag-over'));
+      const target = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.orig-row');
+      if (target && target !== touchItem) target.classList.add('drag-over');
+    }, {passive:true});
+    row.addEventListener('touchend', (e) => {
+      touchItem.style.transform = '';
+      touchItem.style.zIndex = '';
+      touchItem.style.opacity = '';
+      const target = document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY)?.closest('.orig-row');
+      list.querySelectorAll('.orig-row').forEach(el => el.classList.remove('drag-over'));
+      if (target && target.dataset.id && target.dataset.id !== dragSrcId) {
+        const from = state.customTypes.findIndex(x => x.id === dragSrcId);
+        const to   = state.customTypes.findIndex(x => x.id === target.dataset.id);
+        const [moved] = state.customTypes.splice(from, 1);
+        state.customTypes.splice(to, 0, moved);
+        saveState(); buildSettings(); renderHome(); rebuildInpSelect();
+        showToast('順番を変更しました！');
+      }
+    });
+
     list.appendChild(row);
   });
 }
